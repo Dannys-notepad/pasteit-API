@@ -3,19 +3,23 @@ const cryptic = require('../utils/cryptic')
 const { paste } = require('../models/api.model')
 const Pastes = new paste()
 
+//VIEW ALL PASTES
+//@METHOD GET
+//ENDPOINT /api/v1/paste /all
 const allPastes = async (req, res) => {
   try {
-    let allPaste = []
+    let allPastes = []
     let all = await Pastes.fetchAll()
-    let paste = all.forEach((p) => {
-      allPaste.push({
+    all.forEach((p) => {
+      allPastes.push({
+        id: p.id
         title: p.title,
         body: p.body
       })
     })
     return res.json({
       statusCode: 200,
-      allPaste
+      allPastes
     })
   } catch (e) {
     console.error(e)
@@ -26,61 +30,40 @@ const allPastes = async (req, res) => {
   }
 }
 
-const addToDB = async (req, res) => {
+
+//VIEW THE COMPLETE CONTENT OF A PASTE
+//@METHOD GET
+//ENDPOINT /api/v1/paste  /view/:id?decryption_key={key-from-user}
+const viewPaste = async (req, res) => {
   try {
-    let errors = validationResult(req)
-    if(!errors.isEmpty()){
+    const { id } = await req.params
+    const { decryption_key } = await req.query
+    let data = {
+      key: decryption_key,
+      id
+    }
+    
+    let found = await Pastes.fetchById(data.id)
+    if(!found){
       return res.status(400).json({
         statusCode: 400,
-        errors 
+        msg: `a paste with such id ${data.id} do not exist`
       })
     }
     
-    const { title, body} = await req.body
-    let data = await cryptic.encrypt(body)
-    let dbSchema = {
-      id: data.id,
-      iv: data.iv,
-      key: data.key,
-      decrypt: data.decrypt,
-      title,
-      body: data.encryptedString
-    }
-    
-    let added = await Pastes.add(dbSchema)
-    return res.status(201).json({
-      statusCode: 201,
-      msg: 'successfully added paste',
-      decryptKey: dbSchema.decrypt
-    })
-  } catch (e) {
-    console.error(e)
-    return res.status(500).json({
-      statusCode: 500,
-      msg: 'an error occurred, try again later'
-    })
-  }
-  
-}
-
-const viewPaste = async (req, res) => {
-  try {
-    const { decryption_key } = await req.query
-    let key = decryption_key
-    
-    let found = await Pastes.fetchByKey(key)
-    if(!found || found === []){
-      return res.status(400).json({
-        statusCode: 400,
-        msg: 'incorrect key'
+    if(data.key !== found.decryption_key){
+      return res.status(401).json({
+        statusCode: 401,
+        msg: `incorrect decryption key`
       })
     }
     
     let body = await cryptic.decrypt(Buffer.from(found.body, 'hex'), Buffer.from(found.keyy, 'hex'), Buffer.from(found.iv, 'hex'))
-    //let body = await cryptic.decrypt(found.body, found.keyy, found.iv)
+    
     return res.json({
       statusCode: 200,
       paste: {
+        id: found.id
         title: found.title,
         body
       }
@@ -95,6 +78,49 @@ const viewPaste = async (req, res) => {
   
 }
 
+//CREATE PASTE
+//@METHOD POST
+//ENDPOINT /api/v1/paste /create
+const createPaste = async (req, res) => {
+  try {
+    let errors = validationResult(req)
+    if(!errors.isEmpty()){
+      return res.status(400).json({
+        statusCode: 400,
+        errors 
+      })
+    }
+    
+    const { title, body, decryption_key} = await req.body
+    let data = await cryptic.encrypt(body)
+    let dbSchema = {
+      id: data.id,
+      iv: data.iv,
+      key: data.key,
+      decrypt: decryption_key,
+      title,
+      body: data.encryptedString
+    }
+    
+    let added = await Pastes.add(dbSchema)
+    return res.status(201).json({
+      statusCode: 201,
+      msg: 'successfully added paste',
+      decryptionKey: dbSchema.decrypt
+    })
+  } catch (e) {
+    console.error(e)
+    return res.status(500).json({
+      statusCode: 500,
+      msg: 'an error occurred, try again later'
+    })
+  }
+}
+
+
+//UPDATE A PASTE
+//@METHOD PATCH
+//ENDPOINT /api/v1/paste /update/:id?decryption_key={key-from-user}
 const updatePaste = async (req, res) => {
   try {
     let errors = validationResult(req)
@@ -105,12 +131,25 @@ const updatePaste = async (req, res) => {
       })
     }
     
+    const { id } = await req.params
     const { decryption_key } = await req.query
-    let found = await Pastes.fetchByKey(decryption_key)
-    if(!found || found === []){
+    let data = {
+      key: decryption_key,
+      id
+    }
+    
+    let found = await Pastes.fetchByid(data.id)
+    if(!found){
       return res.status(400).json({
         statusCode: 400,
-        msg: 'incorrect key'
+        msg: `a paste with such id ${data.id} do not exist`
+      })
+    }
+    
+    if(data.key !== found.decryption_key){
+      return res.status(401).json({
+        statusCode: 401,
+        msg: `incorrect decryption key`
       })
     }
     
@@ -125,8 +164,8 @@ const updatePaste = async (req, res) => {
     }
     
     let added = await Pastes.edit(dbSchema)
-    return res.status(201).json({
-      statusCode: 201,
+    return res.status(200).json({
+      statusCode: 200,
       msg: 'successfully updated a paste',
     })
   } catch (e) {
@@ -136,25 +175,39 @@ const updatePaste = async (req, res) => {
       msg: 'an error occurred, try again later'
     })
   }
-  
 }
 
+//DELETE A PASTE
+//@METHOD DELETE
+//ENDPOINT /api/v1/paste  /delete/:id?decryption_key={key-from-user}
 const deletePaste = async (req, res) => {
   try {
+    const { id } = await req.params
     const { decryption_key } = await req.query
-    let key = decryption_key
+    let data = {
+      key: decryption_key,
+      id
+    }
     
-    let deleted = await Pastes.deleteByKey(key)
-    if(!deleted){
+    let found = await Pastes.fetchByid(data.id)
+    if(!found){
       return res.status(400).json({
         statusCode: 400,
-        msg: 'incorrect key'
+        msg: `a paste with such id ${data.id} do not exist`
       })
     }
     
+    if(data.key !== found.decryption_key){
+      return res.status(401).json({
+        statusCode: 401,
+        msg: `incorrect decryption key`
+      })
+    }
+    
+    let delete = Pastes.deleteById(data.id)
     return res.json({
       statusCode: 200,
-      msg: 'you deleted a paste'
+      msg: 'paste deleted'
     })
   } catch (e) {
     console.error(e)
@@ -163,13 +216,12 @@ const deletePaste = async (req, res) => {
       msg: 'an error occurred, try again later'
     })
   }
-  
 }
 
 module.exports = {
   allPastes,
-  addToDB,
   viewPaste,
+  createPaste,
   updatePaste,
   deletePaste
 }

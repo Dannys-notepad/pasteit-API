@@ -5,7 +5,7 @@ let encryptedString
 const cryptic = {
   encrypt: (data) => {
     const id = crypto.randomBytes(5).toString('hex');
-    const de_key = crypto.randomBytes(2).toString('hex');
+    //const de_key = crypto.randomBytes(2).toString('hex');
     const key = crypto.randomBytes(32);
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv(algorithm, key, iv);
@@ -14,7 +14,7 @@ const cryptic = {
     //console.log(encryptedString.toString('hex'));
     return {
       encryptedString,
-      decrypt: de_key,
+      //decrypt: de_key,
       key: key.toString('hex'),
       iv: iv.toString('hex'),
       id

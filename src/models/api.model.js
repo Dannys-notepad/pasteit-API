@@ -12,8 +12,8 @@ class paste{
     return result
   }
   
-  async fetchByKey(key){
-    const [result] = await db.execute('SELECT * FROM pastes WHERE decryption_key = ?', [key])
+  async fetchById(id){
+    const [result] = await db.execute('SELECT * FROM pastes WHERE id = ?', [id])
     return result[0]
   }
   
@@ -22,8 +22,8 @@ class paste{
     return result.affectedRows
   }
   
-  async deleteByKey(key){
-    const [result] = await db.execute('DELETE FROM pastes WHERE decryption_key = ?', [key])
+  async deleteById(id){
+    const [result] = await db.execute('DELETE FROM pastes WHERE id = ?', [id])
     return result.affectedRows
   }
 }

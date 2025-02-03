@@ -9,7 +9,7 @@ const check = (req, res, next) => {
   if(!req.query.decryption_key){
     return res.json({
       statusCode: 400,
-      msg: 'the query argument must be "decryption_key"'
+      msg: "the query argument must be 'decryption_key'"
     })
   }
   
