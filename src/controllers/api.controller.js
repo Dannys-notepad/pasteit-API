@@ -1,7 +1,7 @@
 const { validationResult } = require('express-validator')
 const cryptic = require('../utils/cryptic')
-const { paste } = require('../models/api.model')
-const Pastes = new paste()
+const { bin } = require('../models/api.model')
+const Bin = new bin()
 
 //VIEW ALL PASTES
 //@METHOD GET
@@ -9,17 +9,21 @@ const Pastes = new paste()
 const allPastes = async (req, res) => {
   try {
     let allPastes = []
-    let all = await Pastes.fetchAll()
+    let all = await Bin.fetchAll()
     all.forEach((p) => {
       allPastes.push({
-        id: p.id
-        title: p.title,
-        body: p.body
+        id: p.id,
+        title: atob(p.mock_title),
+        body: p.content
       })
     })
-    return res.json({
+    
+    let final = allPastes.length === 0 ? null: allPastes;
+    //let code = final === null ? 204: 200;
+    
+    return res.status(200).json({
       statusCode: 200,
-      allPastes
+      pastes: final ?? 'no pastes yet'
     })
   } catch (e) {
     console.error(e)
@@ -43,7 +47,7 @@ const viewPaste = async (req, res) => {
       id
     }
     
-    let found = await Pastes.fetchById(data.id)
+    let found = await Bin.fetchById(data.id)
     if(!found){
       return res.status(400).json({
         statusCode: 400,
@@ -51,21 +55,26 @@ const viewPaste = async (req, res) => {
       })
     }
     
-    if(data.key !== found.decryption_key){
+    if(data.key !== atob(found.decryption_key)){
       return res.status(401).json({
         statusCode: 401,
         msg: `incorrect decryption key`
       })
     }
     
-    let body = await cryptic.decrypt(Buffer.from(found.body, 'hex'), Buffer.from(found.keyy, 'hex'), Buffer.from(found.iv, 'hex'))
+    let title = await cryptic.decrypt(Buffer.from(atob(found.title), 'hex'), Buffer.from(atob(found.keyy), 'hex'), Buffer.from(atob(found.hive), 'hex'))
+    
+    let content = await cryptic.decrypt(Buffer.from(atob(found.content), 'hex'), Buffer.from(atob(found.keyy), 'hex'), Buffer.from(atob(found.hive), 'hex'))
+    
+    if(atob(found.burn) === 'true'){
+      let del = await Bin.deleteById(found.id)
+    }
     
     return res.json({
       statusCode: 200,
       paste: {
-        id: found.id
-        title: found.title,
-        body
+        title,
+        content
       }
     })
   } catch (e) {
@@ -91,22 +100,36 @@ const createPaste = async (req, res) => {
       })
     }
     
-    const { title, body, decryption_key} = await req.body
-    let data = await cryptic.encrypt(body)
+    let { mock_title, title, content, decryption_key, burn, panic_word} = await req.body
+    let data = await cryptic.encrypt(content)
+    title = await cryptic.encrypt2(title, Buffer .from(data.key, 'hex'), Buffer.from(data.iv, 'hex'))
     let dbSchema = {
       id: data.id,
-      iv: data.iv,
-      key: data.key,
-      decrypt: decryption_key,
-      title,
-      body: data.encryptedString
+      iv: btoa(data.iv),
+      key: btoa(data.key),
+      decrypt: btoa(decryption_key),
+      mock: btoa(mock_title),
+      title: btoa(title),
+      content: btoa(data.encryptedString),
+      burn: btoa(burn),
+      panic_word
     }
-    
-    let added = await Pastes.add(dbSchema)
+    if(panic_word === '//'){
+      let create = await Bin.addP(dbSchema)
+      return res.status(201).json({
+      statusCode: 201,
+      msg: 'successfully added paste',
+      id: dbSchema.id,
+      decryptionKey: atob(dbSchema.decrypt)
+      })
+    }
+    dbSchema.panic_word = btoa(dbSchema.panic_word)
+    let added = await Bin.add(dbSchema)
     return res.status(201).json({
       statusCode: 201,
       msg: 'successfully added paste',
-      decryptionKey: dbSchema.decrypt
+      id: dbSchema.id,
+      decryptionKey: atob(dbSchema.decrypt)
     })
   } catch (e) {
     console.error(e)
@@ -138,7 +161,7 @@ const updatePaste = async (req, res) => {
       id
     }
     
-    let found = await Pastes.fetchByid(data.id)
+    let found = await Bin.fetchById(data.id)
     if(!found){
       return res.status(400).json({
         statusCode: 400,
@@ -146,24 +169,25 @@ const updatePaste = async (req, res) => {
       })
     }
     
-    if(data.key !== found.decryption_key){
+    if(data.key !== atob(found.decryption_key)){
       return res.status(401).json({
         statusCode: 401,
         msg: `incorrect decryption key`
       })
     }
     
-    const { title, body} = await req.body
-    let data = await cryptic.encrypt(body)
+    let { title, content} = await req.body
+    data = await cryptic.encrypt(content)
+    title = await cryptic.encrypt2(title, Buffer .from(data.key, 'hex'), Buffer.from(data.iv, 'hex'))
     let dbSchema = {
-      iv: data.iv,
-      key: data.key,
-      decrypt: decryption_key,
-      title,
-      body: data.encryptedString
+      iv: btoa(data.iv),
+      key: btoa(data.key),
+      decrypt: btoa(decryption_key),
+      title: btoa(title),
+      content: btoa(data.encryptedString)
     }
     
-    let added = await Pastes.edit(dbSchema)
+    let added = await Bin.edit(dbSchema)
     return res.status(200).json({
       statusCode: 200,
       msg: 'successfully updated a paste',
@@ -189,22 +213,23 @@ const deletePaste = async (req, res) => {
       id
     }
     
-    let found = await Pastes.fetchByid(data.id)
+    let found = await Bin.fetchById(data.id)
     if(!found){
       return res.status(400).json({
         statusCode: 400,
-        msg: `a paste with such id ${data.id} do not exist`
+        msg: `a paste with id ${data.id} do not exist`
       })
     }
     
-    if(data.key !== found.decryption_key){
+    if(data.key !== atob(found.decryption_key) && data.key !== atob(found.panic_word)){
+      console.log(found)
       return res.status(401).json({
         statusCode: 401,
         msg: `incorrect decryption key`
       })
     }
     
-    let delete = Pastes.deleteById(data.id)
+    let deleteBin = Bin.deleteById(data.id)
     return res.json({
       statusCode: 200,
       msg: 'paste deleted'

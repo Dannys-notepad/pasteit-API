@@ -20,6 +20,11 @@ const cryptic = {
       id
     }
   },
+  encrypt2: (data, key, iv) => {
+    const cipher = crypto.createCipheriv(algorithm, key, iv);
+    encryptedString = Buffer.concat([cipher.update(data), cipher.final()]).toString('hex');
+    return encryptedString
+  },
   decrypt: (data, key, iv) => {
     const decipher = crypto.createDecipheriv(algorithm, key, iv);
     const decryptedString = Buffer.concat([decipher.update(data), decipher.final()]);
